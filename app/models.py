@@ -49,6 +49,33 @@ class RunContainerRequest(BaseModel):
     restart_policy: Optional[
         Literal['no', 'on-failure', 'always', 'unless-stopped']
     ] = Field(default='unless-stopped')
+    volumes: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of volume bind strings in the form "
+            "'host_path:container_path[:ro|rw]'"
+        ),
+    )
+    network: Optional[str] = Field(
+        default=None, description="Docker network to attach the container to"
+    )
+    wait_ready: bool = Field(
+        default=False,
+        description=(
+            "If true, wait until health_path returns 200 on the host port"
+        ),
+    )
+    health_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Path to probe on the container app (e.g., '/health'). "
+            "Only used when wait_ready is true."
+        ),
+    )
+    wait_timeout: int = Field(
+        default=30,
+        description="Seconds to wait for readiness when wait_ready is true",
+    )
 
     @validator("image")
     def validate_image(cls, v: str) -> str:
@@ -76,3 +103,23 @@ class StartStopResponse(BaseModel):
 class ProxyInfo(BaseModel):
     container_id: str
     upstream: str
+
+
+class ExecRequest(BaseModel):
+    command: List[str] | str = Field(
+        ..., description="Command to run inside the container"
+    )
+    workdir: Optional[str] = Field(
+        default=None, description="Working directory inside the container"
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default=None, description="Environment vars for the exec session"
+    )
+    tty: bool = Field(default=False, description="Allocate a TTY for exec")
+
+
+class ExecResponse(BaseModel):
+    id: str
+    exit_code: int
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
