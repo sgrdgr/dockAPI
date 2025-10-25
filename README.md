@@ -49,6 +49,8 @@ Open the interactive docs: <http://127.0.0.1:8000/docs>
 - POST `/containers/{id}/stop` — Stop
 - POST `/containers/{id}/start` — Start
 - DELETE `/containers/{id}` — Remove
+- GET `/containers/{id}/logs` — View logs (tail, follow)
+- POST `/containers/{id}/exec` — Run a command inside the container
 - GET `/proxy/{id}` — Show the upstream URL for the container
 - ANY `/proxy/{id}/{path}` — Reverse-proxy to the container's published host port
 
@@ -110,6 +112,12 @@ POST `/containers/run`
   "auto_remove": true,
   "detach": true,
   "restart_policy": "unless-stopped"
+  ,
+  "volumes": ["C:/host/data:/data:ro"],
+  "network": "my-network",
+  "wait_ready": true,
+  "health_path": "/healthz",
+  "wait_timeout": 30
 }
 ```
 
@@ -118,6 +126,7 @@ Notes:
 - If `host_port` is omitted or set to 0, the API auto-assigns a free localhost port.
 - Only the specified `container_port` (TCP) is published.
 - The reverse proxy routes requests to `http://127.0.0.1:<host_port>` using the same method, headers (minus hop-by-hop), query, and body.
+- If `wait_ready` is true and `health_path` is provided, the API polls `http://127.0.0.1:<host_port><health_path>` until it returns 2xx or timeout.
 
 ## Windows & Docker Desktop tips
 
