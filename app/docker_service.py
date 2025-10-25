@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import socket
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Generator
 
 import docker
 from docker import DockerClient
 from docker.models.containers import Container
+# intentionally no specific docker.errors import to avoid unused warnings
 
 MANAGED_LABEL = "dockapi.managed"
 NAME_LABEL = "dockapi.name"
@@ -60,6 +61,8 @@ class DockerService:
         auto_remove: bool = True,
         detach: bool = True,
         restart_policy: Optional[str] = "unless-stopped",
+        volumes: Optional[List[str]] = None,
+        network: Optional[str] = None,
     ) -> Tuple[str, int]:
         if host_port is None:
             host_port = self._reserve_port()
@@ -68,6 +71,9 @@ class DockerService:
         labels = {MANAGED_LABEL: "true", PORT_LABEL: str(container_port)}
         if name:
             labels[NAME_LABEL] = name
+
+        vol_spec: Optional[Dict[str, Dict[str, str]]]
+        vol_spec = self._parse_volumes(volumes) if volumes else None
 
         container: Container = self.client.containers.run(
             image=image,
@@ -81,6 +87,8 @@ class DockerService:
             restart_policy=(
                 {"Name": restart_policy} if restart_policy else None
             ),
+            volumes=vol_spec,
+            network=network,
         )
         return container.id, int(host_port)
 
@@ -138,3 +146,74 @@ class DockerService:
     def remove(self, container_id: str, force: bool = False) -> None:
         c = self._find_container(container_id)
         c.remove(force=force)
+
+    # Helpers
+    def _parse_volumes(
+        self, volumes: List[str]
+    ) -> Dict[str, Dict[str, str]]:
+        """
+        Convert a list like ["C:/data:/data:ro", "/host/logs:/container/logs"]
+        into docker-py volumes dict:
+        {
+          "C:/data": {"bind": "/data", "mode": "ro"},
+          "/host/logs": {"bind": "/container/logs", "mode": "rw"}
+        }
+        """
+        result: Dict[str, Dict[str, str]] = {}
+        for item in volumes:
+            parts = item.split(":")
+            if len(parts) < 2:
+                # skip invalid, but keep going
+                continue
+            host = parts[0]
+            cont = parts[1]
+            mode = parts[2] if len(parts) > 2 else "rw"
+            result[host] = {"bind": cont, "mode": mode}
+        return result
+
+    # Logs
+    def get_logs(
+        self,
+        container_id: str,
+        *,
+        tail: Optional[int] = None,
+        follow: bool = False,
+    ) -> Generator[bytes, None, None] | bytes:
+        c = self._find_container(container_id)
+        if follow:
+            stream = c.logs(stream=True, tail=tail)
+
+            def _gen() -> Generator[bytes, None, None]:
+                for chunk in stream:
+                    yield chunk
+
+            return _gen()
+        else:
+            return c.logs(stream=False, tail=tail)
+
+    # Exec
+    def exec(
+        self,
+        container_id: str,
+        command: List[str] | str,
+        *,
+        workdir: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        tty: bool = False,
+    ) -> Tuple[int, str, Optional[str]]:
+        c = self._find_container(container_id)
+        res = c.exec_run(
+            cmd=command,
+            workdir=workdir,
+            environment=env,
+            tty=tty,
+            demux=True,  # returns (stdout, stderr)
+        )
+        exit_code = res.exit_code if hasattr(res, "exit_code") else 0
+        stdout, stderr = (
+            res.output if isinstance(res.output, tuple) else (res.output, None)
+        )
+        # Ensure str output
+        out_str = stdout.decode("utf-8", errors="replace") if stdout else ""
+        err_str = stderr.decode("utf-8", errors="replace") if stderr else None
+        return exit_code, out_str, err_str
