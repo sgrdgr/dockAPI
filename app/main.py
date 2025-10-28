@@ -141,9 +141,13 @@ async def container_logs(
             gen = docker_service.get_logs(container_id, tail=tail, follow=True)
 
             async def streamer():
-                # Wrap sync generator into async
-                for chunk in gen:  # type: ignore
-                    # ensure bytes
+                # Bridge sync generator from docker API to async without blocking the event loop
+                iterator = iter(gen)  # type: ignore
+                while True:
+                    try:
+                        chunk = await asyncio.to_thread(next, iterator)
+                    except StopIteration:
+                        break
                     data = (
                         chunk
                         if isinstance(chunk, (bytes, bytearray))

@@ -64,7 +64,7 @@ class DockerService:
         volumes: Optional[List[str]] = None,
         network: Optional[str] = None,
     ) -> Tuple[str, int]:
-        if host_port is None:
+        if host_port is None or int(host_port) == 0:
             host_port = self._reserve_port()
 
         ports = {f"{container_port}/tcp": host_port}
@@ -161,13 +161,19 @@ class DockerService:
         """
         result: Dict[str, Dict[str, str]] = {}
         for item in volumes:
-            parts = item.split(":")
+            # Split from the right to better support Windows drive letters like C:\
+            parts = item.rsplit(":", maxsplit=2)
             if len(parts) < 2:
                 # skip invalid, but keep going
                 continue
-            host = parts[0]
-            cont = parts[1]
-            mode = parts[2] if len(parts) > 2 else "rw"
+            if len(parts) == 2:
+                host, cont = parts
+                mode = "rw"
+            else:
+                host, cont, mode = parts
+            mode = (mode or "rw").lower()
+            if mode not in {"ro", "rw"}:
+                mode = "rw"
             result[host] = {"bind": cont, "mode": mode}
         return result
 

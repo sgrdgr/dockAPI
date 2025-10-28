@@ -1,5 +1,6 @@
 from typing import Optional, Dict, List, Literal
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+from pydantic import field_validator
 
 
 class PullImageRequest(BaseModel):
@@ -77,7 +78,8 @@ class RunContainerRequest(BaseModel):
         description="Seconds to wait for readiness when wait_ready is true",
     )
 
-    @validator("image")
+    @field_validator("image")
+    @classmethod
     def validate_image(cls, v: str) -> str:
         if ":" not in v:
             # default tag
