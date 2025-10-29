@@ -1,0 +1,68 @@
+### Health
+GET http://127.0.0.1:8000/healthz
+
+### List images
+GET http://127.0.0.1:8000/images
+
+### Pull image
+POST http://127.0.0.1:8000/images/pull
+content-type: application/json
+
+{
+  "image": "nginx:latest"
+}
+
+### Run container (auto-assign host port)
+POST http://127.0.0.1:8000/containers/run
+content-type: application/json
+
+{
+  "image": "nginx:latest",
+  "container_port": 80,
+  "host_port": 0,
+  "name": "nginx-demo",
+  "wait_ready": true,
+  "health_path": "/"
+}
+
+### List containers
+GET http://127.0.0.1:8000/containers
+
+### Inspect container
+GET http://127.0.0.1:8000/containers/{{containerId}}
+
+### Logs (last 100)
+GET http://127.0.0.1:8000/containers/{{containerId}}/logs?tail=100
+
+### Logs (follow)
+GET http://127.0.0.1:8000/containers/{{containerId}}/logs?follow=true&tail=100
+
+### Exec inside container
+POST http://127.0.0.1:8000/containers/{{containerId}}/exec
+content-type: application/json
+
+{
+  "command": ["ls", "-la", "/"],
+  "workdir": "/",
+  "tty": false
+}
+
+### Proxy GET with query
+GET http://127.0.0.1:8000/proxy/{{containerId}}/api/items?page=1&limit=10
+
+### Proxy POST JSON
+POST http://127.0.0.1:8000/proxy/{{containerId}}/api/items
+content-type: application/json
+
+{
+  "name": "example"
+}
+
+### Stop container
+POST http://127.0.0.1:8000/containers/{{containerId}}/stop
+
+### Start container
+POST http://127.0.0.1:8000/containers/{{containerId}}/start
+
+### Remove container
+DELETE http://127.0.0.1:8000/containers/{{containerId}}

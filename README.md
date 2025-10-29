@@ -56,6 +56,12 @@ Open the interactive docs: <http://127.0.0.1:8000/docs>
 
 All containers created by this API are labeled with `dockapi.managed=true`.
 
+Quick links:
+
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- ReDoc: <http://127.0.0.1:8000/redoc>
+- OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
+
 ## Quickstart example: run and interact with an image
 
 Below runs the official `nginx:latest` image, publishing container port 80 to an auto-assigned local host port, then accesses it via the proxy.
@@ -127,6 +133,121 @@ Notes:
 - Only the specified `container_port` (TCP) is published.
 - The reverse proxy routes requests to `http://127.0.0.1:<host_port>` using the same method, headers (minus hop-by-hop), query, and body.
 - If `wait_ready` is true and `health_path` is provided, the API polls `http://127.0.0.1:<host_port><health_path>` until it returns 2xx or timeout.
+
+### Using cURL instead of PowerShell
+
+```bash
+curl -X POST \
+  http://127.0.0.1:8000/containers/run \
+  -H 'content-type: application/json' \
+  -d '{
+        "image": "nginx:latest",
+        "container_port": 80,
+        "host_port": 0,
+        "name": "nginx-demo",
+        "wait_ready": true,
+        "health_path": "/"
+      }'
+```
+
+### Volume mounts (Windows)
+
+```powershell
+$body = @{
+  image = "nginx:latest"
+  container_port = 80
+  volumes = @("C:/host/data:/usr/share/nginx/html:ro")
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method POST `
+  -Uri http://127.0.0.1:8000/containers/run `
+  -ContentType 'application/json' `
+  -Body $body
+```
+
+### Reverse proxy usage
+
+- Allowed methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+- Headers: Hop-by-hop headers (Connection, TE, etc.) are stripped; Host header is set by the proxy.
+- Path joining: `/proxy/{id}/{path}` maps to `http://127.0.0.1:<host_port>/{path}`
+
+Examples:
+
+```bash
+# GET with query string
+curl "http://127.0.0.1:8000/proxy/<container-id>/api/items?page=1&limit=20"
+
+# POST JSON body to container via proxy
+curl -X POST \
+  "http://127.0.0.1:8000/proxy/<container-id>/api/items" \
+  -H 'content-type: application/json' \
+  -d '{"name":"demo"}'
+```
+
+### Logs endpoint
+
+- GET `/containers/{id}/logs?tail=200&follow=false`
+- `tail`: number of lines from the end (optional)
+- `follow`: if true, streams logs (text/plain)
+
+```bash
+# Last 100 lines
+curl "http://127.0.0.1:8000/containers/<container-id>/logs?tail=100"
+
+# Stream logs (press Ctrl+C to stop)
+curl -N "http://127.0.0.1:8000/containers/<container-id>/logs?follow=true&tail=100"
+```
+
+### Exec endpoint
+
+- POST `/containers/{id}/exec`
+
+Request:
+
+```json
+{
+  "command": ["ls", "-la", "/"],
+  "workdir": "/",
+  "env": {"DEMO": "1"},
+  "tty": false
+}
+```
+
+Response:
+
+```json
+{
+  "id": "<container-id>",
+  "exit_code": 0,
+  "stdout": "...",
+  "stderr": null
+}
+```
+
+PowerShell tip: Arrays are easy with `ConvertTo-Json`. If you prefer a single string command, the API accepts that too, e.g. `"command": "ls -la /"`.
+
+## Error handling
+
+- 400 Bad Request — invalid parameters, image not found, port conflicts, invalid volume format
+- 404 Not Found — container not found
+- 500 Internal Server Error — unexpected Docker/engine error
+- 502 Bad Gateway — upstream (proxied container) request failed
+- 504 Gateway Timeout — readiness check timed out when `wait_ready=true`
+
+Common causes:
+
+- Docker is not running or not reachable (start Docker Desktop)
+- Image requires authentication (log into registry in Docker Desktop or CLI)
+- Host port already in use (choose another port or set `host_port: 0`)
+- Volume path doesn’t exist or is not shared with Docker on Windows
+
+## Troubleshooting
+
+- Windows volume bind: ensure your drive is shared in Docker Desktop Settings → Resources → File Sharing.
+- WSL2 networking: mapped ports are reachable from Windows at 127.0.0.1 by default.
+- Private registries: `docker login` with the same daemon this API uses.
+- Slow pull: large images over slow networks can delay `/images/pull` and `/containers/run`.
+- Health path wrong: if `wait_ready=true` and you get 504, open the upstream URL from `/proxy/{id}` and verify the `health_path`.
 
 ## Windows & Docker Desktop tips
 
